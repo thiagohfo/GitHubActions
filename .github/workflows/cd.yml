@@ -37,18 +37,23 @@ jobs:
         known_hosts: 'teste'
 
     - name: Set up SSH Key
+      env:
+        HOST: ${{ secrets.HOST }}
       run: |
-        ssh-keyscan -H 15.229.5.179 >> ~/.ssh/known_hosts
+        ssh-keyscan -H HOST >> ~/.ssh/known_hosts
 
     - name: Copy to EC2
+      env:
+        HOST: ${{ secrets.HOST }}
       run: |
-        rsync -avz ./ ubuntu@15.229.5.179:/home/ubuntu/
+        rsync -avz ./ ubuntu@${HOST}:/home/ubuntu/
 
     - name: Deploy on EC2
       env:
+        HOST: ${{ secrets.HOST }}
         EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
       run: |
-        ssh -o StrictHostKeyChecking=no -i EC2_SSH_PRIVATE_KEY ubuntu@15.229.5.179 << 'EOF'
+        ssh -o StrictHostKeyChecking=no -i EC2_SSH_PRIVATE_KEY ubuntu@${HOST} << 'EOF'
           docker stop $(docker ps -aq) || true
       
           docker rm $(docker ps -aq) || true
