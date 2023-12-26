@@ -1,0 +1,64 @@
+name: Python CICD
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.11.5
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.11.5 # Versão 3.11.5
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Set PYTHONPATH
+      run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+
+    - name: Run tests
+      run: |
+        pip install pytest
+        pytest
+
+    - name: Install SSH Key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        known_hosts: 'teste'
+
+    - name: Set up SSH Key
+      run: |
+        ssh-keyscan -H 15.229.5.179 >> ~/.ssh/known_hosts
+
+    - name: Copy to EC2
+      run: |
+        rsync -avz ./ ubuntu@15.229.5.179:/home/ubuntu/
+
+    - name: Deploy on EC2
+      env:
+        EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+      run: |
+        ssh -o StrictHostKeyChecking=no -i EC2_SSH_PRIVATE_KEY ubuntu@15.229.5.179 << 'EOF'
+          docker stop $(docker ps -aq) || true
+      
+          docker rm $(docker ps -aq) || true
+      
+          docker rmi $(docker images -q) || true
+      
+          docker volume rm $(docker volume ls -q) || true
+          
+          cd /home/ubuntu
+          docker build -t fastapi .
+          
+          docker run -d --name fastapi -p 80:8000 fastapi
+        EOF
