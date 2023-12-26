@@ -40,7 +40,7 @@ jobs:
       env:
         HOST: ${{ secrets.HOST }}
       run: |
-        ssh-keyscan -H HOST >> ~/.ssh/known_hosts
+        ssh-keyscan -H ${HOST} >> ~/.ssh/known_hosts
 
     - name: Copy to EC2
       env:
