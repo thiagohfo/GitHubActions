@@ -1,0 +1,93 @@
+name: Python CICD
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.11.5
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3.11.5 # Versão 3.11.5
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.11.5'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          PYTHONPATH=. pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          known_hosts: 'teste'
+
+      - name: Set up SSH Key
+        env:
+          HOST: ${{ secrets.HOST }}
+        run: |
+          ssh-keyscan -H ${HOST} >> ~/.ssh/known_hosts
+
+      - name: Copy to EC2
+        env:
+          HOST: ${{ secrets.HOST }}
+        run: |
+          rsync -avz ./ ubuntu@${HOST}:/home/ubuntu/
+
+      - name: Deploy on EC2
+        env:
+          HOST: ${{ secrets.HOST }}
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -i EC2_SSH_PRIVATE_KEY ubuntu@${HOST} << 'EOF'
+            docker ps -aq | xargs -r docker stop
+            docker ps -aq | xargs -r docker rm
+        
+            # Remover todas as imagens antigas
+            docker images -q | xargs -r docker rmi
+        
+            # Remover todos os volumes antigos
+            docker volume ls -q | xargs -r docker volume rm
+            
+            cd /home/ubuntu
+            docker build -t fastapi .
+            
+            docker run -d --name fastapi -p 80:8000 fastapi
+          EOF
